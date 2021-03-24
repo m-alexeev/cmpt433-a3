@@ -9,7 +9,7 @@
 
 #define MY_DEVICE_FILE "morsecode"
 #define FIFO_SIZE 512 
-
+/*
 static unsigned short morsecode_codes[] = {
 		0xB800,	// A 1011 1
 		0xEA80,	// B 1110 1010 1
@@ -37,7 +37,7 @@ static unsigned short morsecode_codes[] = {
 		0xEAE0,	// X 1110 1010 111
 		0xEBB8,	// Y 1110 1011 1011 1
 		0xEEA0	// Z 1110 1110 101
-};
+}; */
 
 DEFINE_LED_TRIGGER(morsecode_led);
 static DECLARE_KFIFO(morsecode_fifo, char, FIFO_SIZE);
@@ -51,7 +51,7 @@ static void led_blink(void){
     msleep(LED_DOT_TIME);
     //turn off 
     led_trigger_event(morsecode_led, LED_OFF);
-    msleep(LED_DOT_TIME);
+    msleep(LED_DOT_TIME*4);
 }
 
 
@@ -63,16 +63,22 @@ static ssize_t morse_read(struct file *file , char* buff, size_t count, loff_t* 
     }
 
     return bytesRead;
-
 }
 
 static ssize_t morse_write(struct file *file, const char* buff, size_t count, loff_t *ppos){
     int i; 
-    int copied; 
+    int copied;
+    char value; 
+    //Clear the buffer 
 
     //Write data to fifo
     for (i = 0; i < count; i ++){
-        led_blink();
+        if (copy_from_user(&value, &buff[i], sizeof(buff[i]) )){
+            return -EFAULT;
+        }
+
+        printk(KERN_DEBUG "Copied: %c\n", value);
+
         if (kfifo_from_user(&morsecode_fifo, &buff[i], sizeof(buff[i]), &copied)){
             return -EFAULT;
         }
