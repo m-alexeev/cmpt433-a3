@@ -76,8 +76,10 @@ static ssize_t morse_write(struct file *file, const char* buff, size_t count, lo
         if (copy_from_user(&value, &buff[i], sizeof(buff[i]) )){
             return -EFAULT;
         }
-
-        printk(KERN_DEBUG "Copied: %c\n", value);
+        //If letter, blink 
+        if ((value >= 'a' && value <= 'z') || (value >= 'A' && value <= "Z")){
+            led_blink();
+        }
 
         if (kfifo_from_user(&morsecode_fifo, &buff[i], sizeof(buff[i]), &copied)){
             return -EFAULT;
