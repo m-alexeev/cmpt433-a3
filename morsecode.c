@@ -46,7 +46,7 @@ static DECLARE_KFIFO(morsecode_fifo, char, FIFO_SIZE);
 #define ASCII_LOWERCASE_OFFSET 97
 #define ASCII_UPPERCASE_OFFSET 65
 
-static void led_blink(char value){
+static void led_blink(char value, int position, int total){
     int index = 0; 
     unsigned short letter = 0; 
     bool isLetter = false;
@@ -59,6 +59,7 @@ static void led_blink(char value){
         index = (int)(value) - ASCII_UPPERCASE_OFFSET;
         isLetter = true;
     }
+
     
     letter = morsecode_codes[index];
     if (isLetter){
@@ -80,6 +81,10 @@ static void led_blink(char value){
             letter <<= 1;
         }
         led_trigger_event(morsecode_led, LED_OFF);
+        //If not last letter sleep 
+        if (position < total - 2){
+            msleep(LED_DOT_TIME * 3);
+        }
     }
 
 }
@@ -107,16 +112,16 @@ static ssize_t morse_write(struct file *file, const char* buff, size_t count, lo
             return -EFAULT;
         }
         //Blink LED
-        led_blink(value);
+        led_blink(value , i, count);
 
-        // if (value == 32){
-        //     isSpace = true;
-        // }
-        // if (!hasSpaced && isSpace){
-        //     msleep(LED_DOT_TIME * 7);
-        //     hasSpaced = true; 
-        //     isSpace = false;
-        // }
+        if (value == 32){
+            isSpace = true;
+        }
+        if (!hasSpaced && isSpace){
+            msleep(LED_DOT_TIME * 7);
+            hasSpaced = true; 
+            isSpace = false;
+        }
     }
     return count; 
 }
