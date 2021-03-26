@@ -45,35 +45,44 @@ static DECLARE_KFIFO(morsecode_fifo, char, FIFO_SIZE);
 #define LED_DOT_TIME 200
 #define ASCII_LOWERCASE_OFFSET 97
 #define ASCII_UPPERCASE_OFFSET 65
+#define ASCII_SPACE ' '
 
-static void led_blink(char value, int position, int total){
+#define DOT '.'
+#define DASH '-'
+
+static bool isLetter(char value ){
+    return ((value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z'));
+}
+
+
+
+static void led_blink(char value){
     int index = 0; 
     unsigned short letter = 0; 
-    bool isLetter = false;
+    bool is_letter = isLetter(value);
     //Determine code offset 
     if (value >= 'a' && value <= 'z'){
         index = (int)(value) - ASCII_LOWERCASE_OFFSET;
-        isLetter = true;
     }
     if (value >= 'A' && value <= 'Z'){   
         index = (int)(value) - ASCII_UPPERCASE_OFFSET;
-        isLetter = true;
     }
-
     
     letter = morsecode_codes[index];
-    if (isLetter){
+    if (is_letter){
         while (letter > 0){
-            if (letter & 0x8000){
+            if ((letter & 0xE000) == 0xE000){
+                //Dash
+                led_trigger_event(morsecode_led, LED_FULL);
+                msleep(LED_DOT_TIME * 3); 
+                kfifo_put(&morsecode_fifo, DASH);
+                letter <<= 2;
+            }else if (letter & 0x8000){
                 // Dot 
                 led_trigger_event(morsecode_led, LED_FULL);
                 msleep(LED_DOT_TIME);
-            }else if (letter & 0xE000 == 0xE000){
-                //Dast
-                led_trigger_event(morsecode_led, LED_FULL);
-                msleep(LED_DOT_TIME * 3); 
-                letter <<= 2;
-            } 
+                kfifo_put(&morsecode_fifo, DOT);
+            }
             else {
                 led_trigger_event(morsecode_led, LED_OFF);
                 msleep(LED_DOT_TIME);
@@ -81,14 +90,9 @@ static void led_blink(char value, int position, int total){
             letter <<= 1;
         }
         led_trigger_event(morsecode_led, LED_OFF);
-        //If not last letter sleep 
-        if (position < total - 2){
-            msleep(LED_DOT_TIME * 3);
-        }
     }
 
 }
-
 
 static ssize_t morse_read(struct file *file , char* buff, size_t count, loff_t* ppos){
     int bytesRead; 
@@ -101,28 +105,38 @@ static ssize_t morse_read(struct file *file , char* buff, size_t count, loff_t* 
 
 static ssize_t morse_write(struct file *file, const char* buff, size_t count, loff_t *ppos){
     int i; 
-    int copied;
-    char value; 
+    int spaces; 
+    char value = 0; 
 
-    bool isSpace = false;
     bool hasSpaced = false;
     //Write data to fifo
     for (i = 0; i < count; i ++){
+        if (i < count - 1 ){
+            if (isLetter(value)){
+                //Single space
+                msleep(LED_DOT_TIME * 3);
+                kfifo_put(&morsecode_fifo, ' ');
+                hasSpaced = false; 
+            }
+            if (value == ASCII_SPACE && !hasSpaced){
+                //Triple Space
+                msleep(LED_DOT_TIME * 7);
+                hasSpaced = true;
+                for (spaces = 0; spaces < 3; spaces++){
+                    kfifo_put(&morsecode_fifo, ' ');
+                }
+            }
+        }
+
         if (copy_from_user(&value, &buff[i], sizeof(buff[i]) )){
             return -EFAULT;
         }
         //Blink LED
-        led_blink(value , i, count);
+        led_blink(value);
 
-        if (value == 32){
-            isSpace = true;
-        }
-        if (!hasSpaced && isSpace){
-            msleep(LED_DOT_TIME * 7);
-            hasSpaced = true; 
-            isSpace = false;
-        }
     }
+    //Enqueue newline 
+    kfifo_put(&morsecode_fifo, '\n');
     return count; 
 }
 
